@@ -369,7 +369,7 @@ final class SaveUi {
         }
         writeLog(MetricsEvent.AUTOFILL_SAVE_CUSTOM_DESCRIPTION);
 
-        final RemoteViews template = customDescription.getPresentation();
+        final RemoteViews template = Helper.sanitizeRemoteView(customDescription.getPresentation());
         if (template == null) {
             Slog.w(TAG, "No remote view on custom description");
             return false;
