@@ -175,7 +175,7 @@ open class ControlsFavoritingActivity @Inject constructor(
                 }
 
                 executor.execute {
-                    structurePager.adapter = StructureAdapter(listOfStructures)
+                    structurePager.adapter = StructureAdapter(listOfStructures, userTracker.userId)
                     structurePager.setCurrentItem(structureIndex)
                     if (error) {
                         statusText.text = resources.getString(R.string.controls_favorite_load_error,
