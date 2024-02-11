@@ -382,18 +382,6 @@ public class PixelPropsUtils {
         }
     }
 
-    private static void setVersionField(String key, Object value) {
-        try {
-            if (DEBUG) Log.d(TAG, "Defining prop " + key + " to " + value.toString());
-            Field field = Build.VERSION.class.getDeclaredField(key);
-            field.setAccessible(true);
-            field.set(null, value);
-            field.setAccessible(false);
-        } catch (NoSuchFieldException | IllegalAccessException e) {
-            Log.e(TAG, "Failed to set prop " + key, e);
-        }
-    }
-
     private static void setVersionFieldString(String key, String value) {
         try {
             if (DEBUG) Log.d(TAG, "Defining prop " + key + " to " + value);
@@ -407,18 +395,15 @@ public class PixelPropsUtils {
     }
 
     private static void spoofBuildGms() {
-        // Alter model name and fingerprint to Pixel 2 to avoid hardware attestation enforcement
-        setPropValue("BRAND", "google");
-        setPropValue("PRODUCT", "walleye");
-        setPropValue("MODEL", "Pixel 2");
-        setPropValue("MANUFACTURER", "Google");
-        setPropValue("DEVICE", "walleye");
-        setPropValue("FINGERPRINT", "google/walleye/walleye:8.1.0/OPM1.171019.011/4448085:user/release-keys");
-        setPropValue("ID", "OPM1.171019.011");
-        setPropValue("TYPE", "user");
-        setPropValue("TAGS", "release-keys");
-        setVersionField("DEVICE_INITIAL_SDK_INT", Build.VERSION_CODES.O_MR1);
-        setVersionFieldString("SECURITY_PATCH", "2017-12-05");
+        // Alter model name and fingerprint to avoid hardware attestation enforcement
+                setPropValue("BRAND", "Hisense");
+                setPropValue("MANUFACTURER", "Hisense");
+                setPropValue("DEVICE", "HS6735MT");
+                setPropValue("ID", "MRA58K");
+                setPropValue("FINGERPRINT", "Hisense/F30/HS6735MT:6.0/MRA58K/L1228.6.01.01:user/release-keys");
+                setPropValue("MODEL", "Hisense F30");
+                setPropValue("PRODUCT", "F30");
+                setVersionFieldString("SECURITY_PATCH", "2016-02-01");
     }
 
     private static boolean isCallerSafetyNet() {
