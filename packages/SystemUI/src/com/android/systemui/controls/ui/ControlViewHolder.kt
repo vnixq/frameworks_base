@@ -68,7 +68,8 @@ class ControlViewHolder(
     val bgExecutor: DelayableExecutor,
     val controlActionCoordinator: ControlActionCoordinator,
     val controlsMetricsLogger: ControlsMetricsLogger,
-    val uid: Int
+    val uid: Int,
+    val currentUserId: Int,
 ) {
 
     companion object {
@@ -85,29 +86,9 @@ class ControlViewHolder(
         private val ATTR_DISABLED = intArrayOf(-android.R.attr.state_enabled)
         const val MIN_LEVEL = 0
         const val MAX_LEVEL = 10000
-
-        fun findBehaviorClass(
-            status: Int,
-            template: ControlTemplate,
-            deviceType: Int
-        ): Supplier<out Behavior> {
-            return when {
-                status != Control.STATUS_OK -> Supplier { StatusBehavior() }
-                template == ControlTemplate.NO_TEMPLATE -> Supplier { TouchBehavior() }
-                template is ThumbnailTemplate -> Supplier { ThumbnailBehavior() }
-
-                // Required for legacy support, or where cameras do not use the new template
-                deviceType == DeviceTypes.TYPE_CAMERA -> Supplier { TouchBehavior() }
-                template is ToggleTemplate -> Supplier { ToggleBehavior() }
-                template is StatelessTemplate -> Supplier { TouchBehavior() }
-                template is ToggleRangeTemplate -> Supplier { ToggleRangeBehavior() }
-                template is RangeTemplate -> Supplier { ToggleRangeBehavior() }
-                template is TemperatureControlTemplate -> Supplier { TemperatureControlBehavior() }
-                else -> Supplier { DefaultBehavior() }
-            }
-        }
     }
 
+    private val canUseIconPredicate = CanUseIconPredicate(currentUserId)
     private val toggleBackgroundIntensity: Float = layout.context.resources
             .getFraction(R.fraction.controls_toggle_bg_intensity, 1, 1)
     private var stateAnimator: ValueAnimator? = null
@@ -147,6 +128,27 @@ class ControlViewHolder(
         status.setSelected(true)
     }
 
+    fun findBehaviorClass(
+            status: Int,
+            template: ControlTemplate,
+            deviceType: Int
+    ): Supplier<out Behavior> {
+        return when {
+            status != Control.STATUS_OK -> Supplier { StatusBehavior() }
+            template == ControlTemplate.NO_TEMPLATE -> Supplier { TouchBehavior() }
+            template is ThumbnailTemplate -> Supplier { ThumbnailBehavior(currentUserId) }
+
+            // Required for legacy support, or where cameras do not use the new template
+            deviceType == DeviceTypes.TYPE_CAMERA -> Supplier { TouchBehavior() }
+            template is ToggleTemplate -> Supplier { ToggleBehavior() }
+            template is StatelessTemplate -> Supplier { TouchBehavior() }
+            template is ToggleRangeTemplate -> Supplier { ToggleRangeBehavior() }
+            template is RangeTemplate -> Supplier { ToggleRangeBehavior() }
+            template is TemperatureControlTemplate -> Supplier { TemperatureControlBehavior() }
+            else -> Supplier { DefaultBehavior() }
+        }
+    }
+    
     fun bindData(cws: ControlWithState, isLocked: Boolean) {
         // If an interaction is in progress, the update may visually interfere with the action the
         // action the user wants to make. Don't apply the update, and instead assume a new update
@@ -473,8 +475,10 @@ class ControlViewHolder(
 
         status.setTextColor(color)
 
-        control?.getCustomIcon()?.let {
-            icon.setImageIcon(it)
+        control?.customIcon
+                ?.takeIf(canUseIconPredicate)
+                ?.let {
+        icon.setImageIcon(it)
             icon.imageTintList = it.tintList
         } ?: run {
             if (drawable is StateListDrawable) {
