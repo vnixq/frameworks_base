@@ -221,7 +221,7 @@ open class ControlsFavoritingActivity @Inject constructor(
         structurePager.alpha = 0.0f
         pageIndicator.alpha = 0.0f
         structurePager.apply {
-            adapter = StructureAdapter(emptyList())
+            adapter = StructureAdapter(emptyList(), userTracker.userId)
             registerOnPageChangeCallback(object : ViewPager2.OnPageChangeCallback() {
                 override fun onPageSelected(position: Int) {
                     super.onPageSelected(position)
