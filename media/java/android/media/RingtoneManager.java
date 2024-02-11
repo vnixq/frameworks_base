@@ -837,7 +837,7 @@ public class RingtoneManager {
                     Settings.System.RINGTONE, context.getUserId());
         }
         Uri ringtoneUri = uriString != null ? Uri.parse(uriString) : null;
-
+        
         // If this doesn't verify, the user id must be kept in the uri to ensure it resolves in the
         // correct user storage
         if (ringtoneUri != null
@@ -883,6 +883,19 @@ public class RingtoneManager {
         final ContentResolver resolver = context.getContentResolver();
         if(!isInternalRingtoneUri(ringtoneUri)) {
             ringtoneUri = ContentProvider.maybeAddUserId(ringtoneUri, context.getUserId());
+        }
+        if (ringtoneUri != null) {
+            final String mimeType = resolver.getType(ringtoneUri);
+            if (mimeType == null) {
+                Log.e(TAG, "setActualDefaultRingtoneUri for URI:" + ringtoneUri
+                        + " ignored: failure to find mimeType (no access from this context?)");
+                return;
+            }
+            if (!(mimeType.startsWith("audio/") || mimeType.equals("application/ogg"))) {
+                Log.e(TAG, "setActualDefaultRingtoneUri for URI:" + ringtoneUri
+                        + " ignored: associated mimeType:" + mimeType + " is not an audio type");
+                return;
+            }
         }
         Settings.System.putStringForUser(resolver, setting,
                 ringtoneUri != null ? ringtoneUri.toString() : null, context.getUserId());
