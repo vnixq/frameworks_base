@@ -1537,7 +1537,7 @@ public class DevicePolicyManagerService extends BaseIDevicePolicyManager {
         }
 
         boolean isBuildDebuggable() {
-            return Build.IS_ENG;
+            return Build.IS_DEBUGGABLE;
         }
 
         LockPatternUtils newLockPatternUtils() {
@@ -7627,20 +7627,17 @@ public class DevicePolicyManagerService extends BaseIDevicePolicyManager {
         final CallerIdentity caller = getCallerIdentity(callerPackage);
         Preconditions.checkCallAuthorization(hasFullCrossUsersPermission(caller, userHandle));
 
-        boolean legacyApp = false;
-        // callerPackage can only be null if we were called from within the system,
-        // which means that we are not a legacy app.
-        if (callerPackage != null) {
-            final ApplicationInfo ai;
-            try {
-                ai = mIPackageManager.getApplicationInfo(callerPackage, 0, userHandle);
-            } catch (RemoteException e) {
-                throw new SecurityException(e);
-            }
 
-            if (ai.targetSdkVersion <= Build.VERSION_CODES.M) {
-                legacyApp = true;
-            }
+        final ApplicationInfo ai;
+        try {
+            ai = mIPackageManager.getApplicationInfo(callerPackage, 0, userHandle);
+        } catch (RemoteException e) {
+            throw new SecurityException(e);
+        }
+
+        boolean legacyApp = false;
+        if (ai.targetSdkVersion <= Build.VERSION_CODES.M) {
+            legacyApp = true;
         }
 
         final int rawStatus = getEncryptionStatus();
@@ -7716,30 +7713,20 @@ public class DevicePolicyManagerService extends BaseIDevicePolicyManager {
     // be disabled device-wide.
     private void pushScreenCapturePolicy(int adminUserId) {
         // Update screen capture device-wide if disabled by the DO or COPE PO on the parent profile.
-        ActiveAdmin admin =
-                getDeviceOwnerOrProfileOwnerOfOrganizationOwnedDeviceParentLocked(
+        // Always do this regardless which user this method is called with. Probably a little
+        // wasteful but still safe.
+        ActiveAdmin admin = getDeviceOwnerOrProfileOwnerOfOrganizationOwnedDeviceParentLocked(
                         UserHandle.USER_SYSTEM);
-        if (admin != null && admin.disableScreenCapture) {
-            setScreenCaptureDisabled(UserHandle.USER_ALL);
-        } else {
-            // Otherwise, update screen capture only for the calling user.
-            admin = getProfileOwnerAdminLocked(adminUserId);
-            if (admin != null && admin.disableScreenCapture) {
-                setScreenCaptureDisabled(adminUserId);
-            } else {
-                setScreenCaptureDisabled(UserHandle.USER_NULL);
-            }
-        }
+        setScreenCaptureDisabled(UserHandle.USER_ALL, admin != null && admin.disableScreenCapture);
+        // Update screen capture only for the calling user.
+        admin = getProfileOwnerAdminLocked(adminUserId);
+        setScreenCaptureDisabled(adminUserId, admin != null && admin.disableScreenCapture);
     }
 
     // Set the latest screen capture policy, overriding any existing ones.
     // userHandle can be one of USER_ALL, USER_NULL or a concrete userId.
-    private void setScreenCaptureDisabled(int userHandle) {
-        int current = mPolicyCache.getScreenCaptureDisallowedUser();
-        if (userHandle == current) {
-            return;
-        }
-        mPolicyCache.setScreenCaptureDisallowedUser(userHandle);
+    private void setScreenCaptureDisabled(int userHandle, boolean disabled) {
+        mPolicyCache.setScreenCaptureDisallowedUser(userHandle, disabled);
         updateScreenCaptureDisabled();
     }
 
@@ -8269,30 +8256,6 @@ public class DevicePolicyManagerService extends BaseIDevicePolicyManager {
                 .setInt(which)
                 .setStrings(parent ? CALLED_FROM_PARENT : NOT_CALLED_FROM_PARENT)
                 .write();
-    }
-
-    /**
-     * @hide
-     */
-    @Override
-    public boolean requireSecureKeyguard(int userHandle) {
-        if (!mHasFeature) {
-            return false;
-        }
-
-        int passwordQuality = getPasswordQuality(null, userHandle, false);
-        if (passwordQuality > DevicePolicyManager.PASSWORD_QUALITY_UNSPECIFIED) {
-            return true;
-        }
-
-        int encryptionStatus = getStorageEncryptionStatus(null, userHandle);
-        if (encryptionStatus == DevicePolicyManager.ENCRYPTION_STATUS_ACTIVE
-                || encryptionStatus == DevicePolicyManager.ENCRYPTION_STATUS_ACTIVATING) {
-            return true;
-        }
-
-        final int keyguardDisabledFeatures = getKeyguardDisabledFeatures(null, userHandle, false);
-        return (keyguardDisabledFeatures & DevicePolicyManager.KEYGUARD_DISABLE_TRUST_AGENTS) != 0;
     }
 
     /**
@@ -11192,12 +11155,6 @@ public class DevicePolicyManagerService extends BaseIDevicePolicyManager {
         CallerIdentity caller = getCallerIdentity();
         Preconditions.checkCallAuthorization(canManageUsers(caller)
                 || hasCallingOrSelfPermission(permission.INTERACT_ACROSS_USERS));
-
-        synchronized (getLockObject()) {
-            if (getLogoutUserIdUnchecked() == UserHandle.USER_NULL) {
-                setLogoutUserIdLocked(UserHandle.USER_SYSTEM);
-            }
-        }
 
         int currentUserId = getCurrentForegroundUserId();
         if (VERBOSE_LOG) {
@@ -16141,11 +16098,11 @@ public class DevicePolicyManagerService extends BaseIDevicePolicyManager {
     @Override
     public boolean isLogoutEnabled() {
         if (!mHasFeature) {
-            return true;
+            return false;
         }
         synchronized (getLockObject()) {
             ActiveAdmin deviceOwner = getDeviceOwnerAdminLocked();
-            return (deviceOwner == null) || deviceOwner.isLogoutEnabled;
+            return (deviceOwner != null) && deviceOwner.isLogoutEnabled;
         }
     }
 
@@ -17792,7 +17749,7 @@ public class DevicePolicyManagerService extends BaseIDevicePolicyManager {
                 }
             }
 
-            onCreateAndProvisionManagedProfileCompleted(userInfo.id, provisioningParams);
+            onCreateAndProvisionManagedProfileCompleted(provisioningParams);
 
             sendProvisioningCompletedBroadcast(
                     userInfo.id,
@@ -17864,17 +17821,8 @@ public class DevicePolicyManagerService extends BaseIDevicePolicyManager {
      *
      * <p>This method is meant to be overridden by OEMs.
      */
-    private void onCreateAndProvisionManagedProfileCompleted(int userId,
-            ManagedProfileProvisioningParams provisioningParams) {
-        try {
-            Set<Integer> uids = ConnectivitySettingsManager.getUidsAllowedOnRestrictedNetworks(
-                    mContext);
-            uids.add(mContext.getPackageManager().getPackageUidAsUser(
-                    provisioningParams.getOwnerName(), userId));
-            ConnectivitySettingsManager.setUidsAllowedOnRestrictedNetworks(mContext, uids);
-        } catch (NameNotFoundException ignored) {
-        }
-    }
+    private void onCreateAndProvisionManagedProfileCompleted(
+            ManagedProfileProvisioningParams provisioningParams) {}
 
     private void maybeInstallDevicePolicyManagementRoleHolderInUser(int targetUserId) {
         String devicePolicyManagerRoleHolderPackageName =
